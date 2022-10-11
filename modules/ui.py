@@ -123,8 +123,13 @@ def save_files(js_data, images, do_make_zip, index):
 
     data = json.loads(js_data)
 
+    print("-----------DATA----------")
+    print(data)
+    print("-----------FILENAMES INIT----------")
+    print(filenames)
+
     p = MyObject(data)
-    path = opts.outdir_save
+    path = opts.outdir_save 
     save_to_dirs = opts.use_save_to_dirs_for_ui
     extension: str = opts.samples_format
     start_index = 0
@@ -140,7 +145,7 @@ def save_files(js_data, images, do_make_zip, index):
         at_start = file.tell() == 0
         writer = csv.writer(file)
         if at_start:
-            writer.writerow(["prompt", "seed", "width", "height", "sampler", "cfgs", "steps", "filename", "negative_prompt"])
+            writer.writerow(["prompt", "seed", "width", "height", "sampler", "cfgs", "steps", "filename", "negative_prompt","image_filenames"])
 
         for image_index, filedata in enumerate(images, start_index):
             if filedata.startswith("data:image/png;base64,"):
@@ -160,7 +165,10 @@ def save_files(js_data, images, do_make_zip, index):
                 filenames.append(os.path.basename(txt_fullfn))
                 fullfns.append(txt_fullfn)
 
-        writer.writerow([data["prompt"], data["seed"], data["width"], data["height"], data["sampler"], data["cfg_scale"], data["steps"], filenames[0], data["negative_prompt"]])
+        print("-----------FILENAMES INIT----------")
+        print(filenames)
+
+        writer.writerow([data["prompt"], data["seed"], data["width"], data["height"], data["sampler"], data["cfg_scale"], data["steps"], filenames[0], data["negative_prompt"], "image_filenames"])
 
     # Make Zip
     if do_make_zip:
@@ -215,7 +223,7 @@ def wrap_gradio_call(func, extra_outputs=None):
         if run_memmon:
             mem_stats = {k: -(v//-(1024*1024)) for k, v in shared.mem_mon.stop().items()}
             active_peak = mem_stats['active_peak']
-            reserved_peak = mem_stats['reserved_peak']
+            reserved_peak = mem_stats['reserved_peak'] 
             sys_peak = mem_stats['system_peak']
             sys_total = mem_stats['total']
             sys_pct = round(sys_peak/max(sys_total, 1) * 100, 2)
@@ -590,6 +598,7 @@ def create_ui(wrap_gradio_gpu_call):
 
                 with gr.Group():
                     with gr.Row():
+                        # note save button for txt2img rendered here
                         save = gr.Button('Save')
                         send_to_img2img = gr.Button('Send to img2img')
                         send_to_inpaint = gr.Button('Send to inpaint')
@@ -662,6 +671,7 @@ def create_ui(wrap_gradio_gpu_call):
                 outputs=[hr_options],
             )
 
+            # save click handler for txt2img
             save.click(
                 fn=wrap_gradio_call(save_files),
                 _js="(x, y, z, w) => [x, y, z, selected_gallery_index()]",
@@ -805,6 +815,7 @@ def create_ui(wrap_gradio_gpu_call):
 
                 with gr.Group():
                     with gr.Row():
+                        # note save button for img2img rendered here
                         save = gr.Button('Save')
                         img2img_send_to_img2img = gr.Button('Send to img2img')
                         img2img_send_to_inpaint = gr.Button('Send to inpaint')
@@ -909,6 +920,7 @@ def create_ui(wrap_gradio_gpu_call):
                     outputs=[img2img_prompt],
                 )
 
+            # save click handler for img2img
             save.click(
                 fn=wrap_gradio_call(save_files),
                 _js="(x, y, z, w) => [x, y, z, selected_gallery_index()]",
@@ -1289,6 +1301,26 @@ def create_ui(wrap_gradio_gpu_call):
             outputs=[],
         )
 
+    with gr.Blocks(analytics_enabled=False) as gallery:
+        with gr.Row().style(equal_height=False):
+            with gr.Column(variant='panel'):
+                image = gr.Image(elem_id="pnginfo_image", label="Source", source="upload", interactive=True, type="pil")
+
+            with gr.Column(variant='panel'):
+                html = gr.HTML()
+                generation_info = gr.Textbox(visible=False)
+                html2 = gr.HTML()
+
+                with gr.Row():
+                    pnginfo_send_to_txt2img = gr.Button('Send to txt2img')
+                    pnginfo_send_to_img2img = gr.Button('Send to img2img')
+
+        image.change(
+            fn=wrap_gradio_call(modules.extras.run_pnginfo),
+            inputs=[image],
+            outputs=[html, generation_info, html2],
+        )
+
     def create_setting_component(key, is_quicksettings=False):
         def fun():
             return opts.data[key] if key in opts.data else opts.data_labels[key].default
@@ -1490,6 +1522,7 @@ Requested path was: {f}
         (images_history, "History", "images_history"),
         (modelmerger_interface, "Checkpoint Merger", "modelmerger"),
         (train_interface, "Train", "ti"),
+        (gallery, "Gallery", "gallery"),
         (settings_interface, "Settings", "settings"),
     ]
 

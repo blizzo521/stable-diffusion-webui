@@ -122,12 +122,6 @@ def save_files(js_data, images, do_make_zip, index):
                     setattr(self, key, value)
 
     data = json.loads(js_data)
-
-    print("-----------DATA----------")
-    print(data)
-    print("-----------FILENAMES INIT----------")
-    print(filenames)
-
     p = MyObject(data)
     path = opts.outdir_save 
     save_to_dirs = opts.use_save_to_dirs_for_ui
@@ -144,6 +138,7 @@ def save_files(js_data, images, do_make_zip, index):
     with open(os.path.join(opts.outdir_save, "log.csv"), "a", encoding="utf8", newline='') as file:
         at_start = file.tell() == 0
         writer = csv.writer(file)
+        image_filenames = []
         if at_start:
             writer.writerow(["prompt", "seed", "width", "height", "sampler", "cfgs", "steps", "filename", "negative_prompt","image_filenames"])
 
@@ -164,11 +159,9 @@ def save_files(js_data, images, do_make_zip, index):
             if txt_fullfn:
                 filenames.append(os.path.basename(txt_fullfn))
                 fullfns.append(txt_fullfn)
-
-        print("-----------FILENAMES INIT----------")
-        print(filenames)
-
-        writer.writerow([data["prompt"], data["seed"], data["width"], data["height"], data["sampler"], data["cfg_scale"], data["steps"], filenames[0], data["negative_prompt"], "image_filenames"])
+        
+        image_filenames = "[SAVED_IMAGE_SEPARATOR]".join(filenames)
+        writer.writerow([data["prompt"], data["seed"], data["width"], data["height"], data["sampler"], data["cfg_scale"], data["steps"], filenames[0], data["negative_prompt"], image_filenames])
 
     # Make Zip
     if do_make_zip:
@@ -182,6 +175,13 @@ def save_files(js_data, images, do_make_zip, index):
         fullfns.insert(0, zip_filepath)
 
     return gr.File.update(value=fullfns, visible=True), '', '', plaintext_to_html(f"Saved: {filenames[0]}")
+
+def image_paths(images_string):
+  print("-----------image_paths------------")
+  images = images_string.split("[SAVED_IMAGE_SEPARATOR]")
+  for image in images:
+    print('-----')
+    print(image)
 
 
 def wrap_gradio_call(func, extra_outputs=None):
@@ -1302,24 +1302,23 @@ def create_ui(wrap_gradio_gpu_call):
         )
 
     with gr.Blocks(analytics_enabled=False) as gallery:
-        with gr.Row().style(equal_height=False):
+      import csv
+
+      with open(os.path.join(opts.outdir_save, "log.csv"), "r", encoding="utf8", newline='') as file:
+        reader = csv.reader(file)
+        next(reader)
+        items = []
+        for row in reader:
+          items.append(row)
+        image_paths(items[0][len(items[0])-1])
+
+        with gr.Row().style(equal_height=False): #WORKING HERE
             with gr.Column(variant='panel'):
-                image = gr.Image(elem_id="pnginfo_image", label="Source", source="upload", interactive=True, type="pil")
+                gr.Radio(label='Display Item', elem_id="gallery_items", choices=[x[0] for x in items], value=items[0][0], type="index")
 
             with gr.Column(variant='panel'):
-                html = gr.HTML()
-                generation_info = gr.Textbox(visible=False)
-                html2 = gr.HTML()
-
-                with gr.Row():
-                    pnginfo_send_to_txt2img = gr.Button('Send to txt2img')
-                    pnginfo_send_to_img2img = gr.Button('Send to img2img')
-
-        image.change(
-            fn=wrap_gradio_call(modules.extras.run_pnginfo),
-            inputs=[image],
-            outputs=[html, generation_info, html2],
-        )
+                gr.Textbox(elem_id="gallery_prompt", label="prompt", value=items[0][0], visible=True, lines=2)
+                gr.Image()
 
     def create_setting_component(key, is_quicksettings=False):
         def fun():

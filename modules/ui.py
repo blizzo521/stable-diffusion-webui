@@ -81,6 +81,9 @@ paste_symbol = '\u2199\ufe0f'  # ↙
 folder_symbol = '\U0001f4c2'  # 📂
 refresh_symbol = '\U0001f504'  # 🔄
 
+# set up folders and files for image saving
+os.makedirs(opts.outdir_save, exist_ok=True)
+open(os.path.join(opts.outdir_save, "log.csv"), "a+", encoding="utf8", newline='')
 
 def plaintext_to_html(text):
     text = "<p>" + "<br>\n".join([f"{html.escape(x)}" for x in text.split('\n')]) + "</p>"
@@ -108,7 +111,6 @@ def send_gradio_gallery_to_image(x):
 
     return image_from_url_text(x[0])
 
-
 def save_files(js_data, images, do_make_zip, index):
     import csv
     filenames = []
@@ -133,9 +135,7 @@ def save_files(js_data, images, do_make_zip, index):
         images = [images[index]]
         start_index = index
 
-    os.makedirs(opts.outdir_save, exist_ok=True)
-
-    with open(os.path.join(opts.outdir_save, "log.csv"), "a", encoding="utf8", newline='') as file:
+    with open(os.path.join(opts.outdir_save, "log.csv"), "a+", encoding="utf8", newline='') as file:
         at_start = file.tell() == 0
         writer = csv.writer(file)
         image_filenames = []
@@ -154,13 +154,20 @@ def save_files(js_data, images, do_make_zip, index):
             fullfn, txt_fullfn = save_image(image, path, "", seed=p.all_seeds[i], prompt=p.all_prompts[i], extension=extension, info=p.infotexts[image_index], grid=is_grid, p=p, save_to_dirs=save_to_dirs)
 
             filename = os.path.relpath(fullfn, path)
-            filenames.append(filename)
+            filenames.append((f'"{filename}"'))
             fullfns.append(fullfn)
             if txt_fullfn:
                 filenames.append(os.path.basename(txt_fullfn))
                 fullfns.append(txt_fullfn)
-        
-        image_filenames = "[SAVED_IMAGE_SEPARATOR]".join(filenames)
+
+        print("----- filenames -----")
+        print(filenames)
+
+        image_filenames = ",".join(filenames)
+
+        print("----- image_filenames -----")
+        print(image_filenames)
+
         writer.writerow([data["prompt"], data["seed"], data["width"], data["height"], data["sampler"], data["cfg_scale"], data["steps"], filenames[0], data["negative_prompt"], image_filenames])
 
     # Make Zip
@@ -178,10 +185,12 @@ def save_files(js_data, images, do_make_zip, index):
 
 def image_paths(images_string):
   print("-----------image_paths------------")
-  images = images_string.split("[SAVED_IMAGE_SEPARATOR]")
-  for image in images:
-    print('-----')
-    print(image)
+  images = []
+  paths = images_string.split("\",\"")
+  for path in paths:
+    full_path = os.path.join(opts.outdir_save, path.strip('\"'))
+    images.append(full_path)
+  return images
 
 
 def wrap_gradio_call(func, extra_outputs=None):
@@ -1305,20 +1314,27 @@ def create_ui(wrap_gradio_gpu_call):
       import csv
 
       with open(os.path.join(opts.outdir_save, "log.csv"), "r", encoding="utf8", newline='') as file:
-        reader = csv.reader(file)
-        next(reader)
-        items = []
-        for row in reader:
-          items.append(row)
-        image_paths(items[0][len(items[0])-1])
+        if os.path.getsize(file.name) != 0:
+          reader = csv.reader(file)
+          next(reader)
+          items = []
+          for row in reader:
+            items.append(row)
+          images = image_paths(items[0][len(items[0])-1])
+          print('----- images -----')
+          print(images)
 
-        with gr.Row().style(equal_height=False): #WORKING HERE
-            with gr.Column(variant='panel'):
-                gr.Radio(label='Display Item', elem_id="gallery_items", choices=[x[0] for x in items], value=items[0][0], type="index")
+          with gr.Row().style(equal_height=False): #WORKING HERE
+              with gr.Column(variant='panel'):
+                  gr.Radio(label='Display Item', elem_id="gallery_items", choices=[x[0] for x in items], value=items[0][0], type="index")
 
-            with gr.Column(variant='panel'):
-                gr.Textbox(elem_id="gallery_prompt", label="prompt", value=items[0][0], visible=True, lines=2)
-                gr.Image()
+              with gr.Column(variant='panel'):
+                  gr.Textbox(elem_id="gallery_prompt", label="prompt", value=items[0][0], visible=True, lines=2)
+                  gr.Gallery(images)
+        else:
+           with gr.Row().style(equal_height=False): #WORKING HERE
+              with gr.Column(variant='panel'):
+                  gr.HTML("<strong>Nothing saved to the Gallery yet</strong>")
 
     def create_setting_component(key, is_quicksettings=False):
         def fun():

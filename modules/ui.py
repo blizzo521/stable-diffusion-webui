@@ -1321,16 +1321,21 @@ def create_ui(wrap_gradio_gpu_call):
           for row in reader:
             items.append(row)
           images = image_paths(items[0][len(items[0])-1])
-          print('----- images -----')
-          print(images)
 
           with gr.Row().style(equal_height=False): #WORKING HERE
               with gr.Column(variant='panel'):
-                  gr.Radio(label='Display Item', elem_id="gallery_items", choices=[x[0] for x in items], value=items[0][0], type="index")
+                  gallery_radio = gr.Radio(label='Display Item', elem_id="gallery_items", choices=[x[0] for x in items], value=items[0][0], type="index")
+
+                  # resize_mode = gr.Radio(label="Resize mode", elem_id="resize_mode", show_label=False, choices=["Just resize", "Crop and resize", "Resize and fill"], type="index", value="Just resize")
 
               with gr.Column(variant='panel'):
-                  gr.Textbox(elem_id="gallery_prompt", label="prompt", value=items[0][0], visible=True, lines=2)
-                  gr.Gallery(images).style(grid=4)
+                  gallery_prompt = gr.Textbox(elem_id="gallery_prompt", label="prompt", value=items[0][0], visible=True, lines=2)
+                  gallery_images = gr.Gallery(images).style(grid=4)
+
+          def build_gallery(gallery_index):
+            return items[gallery_index][0], image_paths(items[gallery_index][len(items[gallery_index])-1])
+
+          gallery_radio.change(build_gallery, inputs=[gallery_radio], outputs=[gallery_prompt, gallery_images])
         else:
            with gr.Row().style(equal_height=False): #WORKING HERE
               with gr.Column(variant='panel'):

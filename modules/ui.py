@@ -1330,7 +1330,7 @@ def create_ui(wrap_gradio_gpu_call):
 
               with gr.Column(variant='panel'):
                   gr.Textbox(elem_id="gallery_prompt", label="prompt", value=items[0][0], visible=True, lines=2)
-                  gr.Gallery(images)
+                  gr.Gallery(images).style(grid=4)
         else:
            with gr.Row().style(equal_height=False): #WORKING HERE
               with gr.Column(variant='panel'):

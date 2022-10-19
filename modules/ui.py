@@ -1,3 +1,5 @@
+### INTEGRATED
+
 import base64
 import html
 import io
@@ -84,6 +86,9 @@ refresh_symbol = '\U0001f504'  # 🔄
 save_style_symbol = '\U0001f4be'  # 💾
 apply_style_symbol = '\U0001f4cb'  # 📋
 
+# set up folders and files for image saving
+os.makedirs(opts.outdir_save, exist_ok=True)
+open(os.path.join(opts.outdir_save, "log.csv"), "a+", encoding="utf8", newline='')
 
 def plaintext_to_html(text):
     text = "<p>" + "<br>\n".join([f"{html.escape(x)}" for x in text.split('\n')]) + "</p>"
@@ -119,7 +124,6 @@ def send_gradio_gallery_to_image(x):
 
     return image_from_url_text(x[0])
 
-
 def save_files(js_data, images, do_make_zip, index):
     import csv
     filenames = []
@@ -133,9 +137,8 @@ def save_files(js_data, images, do_make_zip, index):
                     setattr(self, key, value)
 
     data = json.loads(js_data)
-
     p = MyObject(data)
-    path = opts.outdir_save
+    path = opts.outdir_save 
     save_to_dirs = opts.use_save_to_dirs_for_ui
     extension: str = opts.samples_format
     start_index = 0
@@ -147,11 +150,12 @@ def save_files(js_data, images, do_make_zip, index):
 
     os.makedirs(opts.outdir_save, exist_ok=True)
 
-    with open(os.path.join(opts.outdir_save, "log.csv"), "a", encoding="utf8", newline='') as file:
+    with open(os.path.join(opts.outdir_save, "log.csv"), "a+", encoding="utf8", newline='') as file:
         at_start = file.tell() == 0
         writer = csv.writer(file)
+        image_filenames = []
         if at_start:
-            writer.writerow(["prompt", "seed", "width", "height", "sampler", "cfgs", "steps", "filename", "negative_prompt"])
+            writer.writerow(["prompt", "seed", "width", "height", "sampler", "cfgs", "steps", "filename", "negative_prompt","image_filenames"])
 
         for image_index, filedata in enumerate(images, start_index):
             image = image_from_url_text(filedata)
@@ -163,12 +167,23 @@ def save_files(js_data, images, do_make_zip, index):
 
             filename = os.path.relpath(fullfn, path)
             filenames.append(filename)
+            # filenames.append((f'"{filename}"')) - Might need to put this back
             fullfns.append(fullfn)
             if txt_fullfn:
                 filenames.append(os.path.basename(txt_fullfn))
                 fullfns.append(txt_fullfn)
 
-        writer.writerow([data["prompt"], data["seed"], data["width"], data["height"], data["sampler"], data["cfg_scale"], data["steps"], filenames[0], data["negative_prompt"]])
+
+
+        print("----- filenames -----")
+        print(filenames)
+
+        image_filenames = ",".join(filenames)
+
+        print("----- image_filenames -----")
+        print(image_filenames)
+
+        writer.writerow([data["prompt"], data["seed"], data["width"], data["height"], data["sampler"], data["cfg_scale"], data["steps"], filenames[0], data["negative_prompt"], image_filenames])
 
     # Make Zip
     if do_make_zip:
@@ -183,6 +198,14 @@ def save_files(js_data, images, do_make_zip, index):
 
     return gr.File.update(value=fullfns, visible=True), '', '', plaintext_to_html(f"Saved: {filenames[0]}")
 
+def image_paths(images_string):
+  print("-----------image_paths------------")
+  images = []
+  paths = images_string.split("\",\"")
+  for path in paths:
+    full_path = os.path.join(opts.outdir_save, path.strip('\"'))
+    images.append(full_path)
+  return images
 
 def save_pil_to_file(pil_image, dir=None):
     use_metadata = False
@@ -199,7 +222,6 @@ def save_pil_to_file(pil_image, dir=None):
 
 # override save to file function so that it also writes PNG info
 gr.processing_utils.save_pil_to_file = save_pil_to_file
-
 
 def wrap_gradio_call(func, extra_outputs=None):
     def f(*args, extra_outputs_array=extra_outputs, **kwargs):
@@ -1360,6 +1382,37 @@ def create_ui(wrap_gradio_gpu_call):
             outputs=[],
         )
 
+    with gr.Blocks(analytics_enabled=False) as gallery:
+      import csv
+
+      with open(os.path.join(opts.outdir_save, "log.csv"), "r", encoding="utf8", newline='') as file:
+        if os.path.getsize(file.name) != 0:
+          reader = csv.reader(file)
+          next(reader)
+          items = []
+          for row in reader:
+            items.append(row)
+          images = image_paths(items[0][len(items[0])-1])
+
+          with gr.Row().style(equal_height=False): #WORKING HERE
+              with gr.Column(variant='panel'):
+                  gallery_radio = gr.Radio(label='Display Item', elem_id="gallery_items", choices=[x[0] for x in items], value=items[0][0], type="index")
+
+                  # resize_mode = gr.Radio(label="Resize mode", elem_id="resize_mode", show_label=False, choices=["Just resize", "Crop and resize", "Resize and fill"], type="index", value="Just resize")
+
+              with gr.Column(variant='panel'):
+                  gallery_prompt = gr.Textbox(elem_id="gallery_prompt", label="prompt", value=items[0][0], visible=True, lines=2)
+                  gallery_images = gr.Gallery(images).style(grid=4)
+
+          def build_gallery(gallery_index):
+            return items[gallery_index][0], image_paths(items[gallery_index][len(items[gallery_index])-1])
+
+          gallery_radio.change(build_gallery, inputs=[gallery_radio], outputs=[gallery_prompt, gallery_images])
+        else:
+           with gr.Row().style(equal_height=False): #WORKING HERE
+              with gr.Column(variant='panel'):
+                  gr.HTML("<strong>Nothing saved to the Gallery yet</strong>")
+
     def create_setting_component(key, is_quicksettings=False):
         def fun():
             return opts.data[key] if key in opts.data else opts.data_labels[key].default
@@ -1567,6 +1620,7 @@ Requested path was: {f}
         (images_history, "History", "images_history"),
         (modelmerger_interface, "Checkpoint Merger", "modelmerger"),
         (train_interface, "Train", "ti"),
+        (gallery, "Gallery", "gallery"),
         (settings_interface, "Settings", "settings"),
     ]
 
